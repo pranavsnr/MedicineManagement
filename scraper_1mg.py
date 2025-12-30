@@ -7,9 +7,12 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
-from typing import Any
+from typing import Any, Dict
 from Selenium_utilis import wait_present, wait_visible
+import re
 
 
 def get_driver(headless: bool = False) -> webdriver.Chrome:
@@ -187,3 +190,137 @@ def search_medicine(driver: webdriver.Chrome, query: str) -> None:
                 f"Search results did not load after searching for '{query}'. "
                 "URL did not change and no result container elements were found."
             )
+
+def open_first(driver: webdriver.Chrome, query: str, timeout: int = 15) -> Dict[str, str]:
+    """
+    Opens the first medicine result from search results in a new tab and returns its URL and title.
+    
+    This function assumes the first result opens in a new tab (target="_blank"). It stores
+    the current window handle, finds the first medicine result link using fallback selectors,
+    scrolls it into view, clicks it, waits for a new tab to appear, switches to it, and
+    returns the URL and title of the new tab.
+    
+    Args:
+        driver (webdriver.Chrome): The WebDriver instance on the search results page.
+        query (str): The search query that was used (for debugging purposes).
+        timeout (int): Maximum time in seconds to wait for elements and new tab. Defaults to 15.
+    
+    Returns:
+        Dict[str, str]: A dictionary with 'url' and 'title' keys containing the new tab's URL and title.
+    
+    Raises:
+        Exception: If no medicine result links are found or if a new tab does not appear.
+        TimeoutError: If elements do not appear within the timeout period.
+    """
+    # Store the current window handle before clicking
+    before_handle = driver.current_window_handle
+    print(f"Stored current window handle: {before_handle}")
+    
+    # Define selectors to try in order
+    selectors = [
+        "CSS: div[class*='product-box'] a[href^='/drugs/']",
+        "CSS: a[href^='/drugs/']",
+    ]
+    
+    # Find the first medicine result link using fallback strategy
+    first_link = None
+    used_selector = None
+    
+    for selector in selectors:
+        strategy, value = selector.split(":", 1)
+        strategy = strategy.strip().upper()
+        locator = value.strip()
+        
+        if strategy == "CSS":
+            by = By.CSS_SELECTOR
+        else:
+            by = By.CSS_SELECTOR
+        
+        try:
+            # Wait until at least one element is present/visible
+            wait_present(driver, by, locator, timeout=timeout)
+            elements = driver.find_elements(by, locator)
+            if elements:
+                first_link = elements[0]
+                used_selector = selector
+                print(f"Found medicine result link using selector: {selector}")
+                break
+        except TimeoutError:
+            continue
+    
+    if first_link is None:
+        raise Exception(
+            f"Could not locate medicine result link. Tried selectors: {', '.join(selectors)}"
+        )
+    
+    # Scroll the element into view
+    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", first_link)
+    
+    # Try clicking the element, fallback to JS click if it fails
+    try:
+        first_link.click()
+        print("Clicked medicine result link using standard click")
+    except Exception as e:
+        print(f"Standard click failed: {e}, trying JavaScript click")
+        driver.execute_script("arguments[0].click();", first_link)
+        print("Clicked medicine result link using JavaScript click")
+    
+    # Wait until new tab appears
+    print("Waiting for new tab to appear...")
+    wait = WebDriverWait(driver, timeout)
+    try:
+        wait.until(lambda d: len(d.window_handles) > 1)
+        print("New tab detected")
+    except TimeoutException:
+        raise Exception(
+            f"New tab did not appear within {timeout} seconds after clicking the medicine result link"
+        )
+    
+    # Get all window handles and switch to the new one
+    all_handles = driver.window_handles
+    new_handle = [h for h in all_handles if h != before_handle][0]
+    driver.switch_to.window(new_handle)
+    print(f"Switched to new tab with handle: {new_handle}")
+    
+    # Get URL and title of the new tab
+    new_url = driver.current_url
+    new_title = driver.title
+    print(f"New tab URL: {new_url}")
+    print(f"New tab title: {new_title}")
+    
+    return {"url": new_url, "title": new_title}
+
+
+def title_matches_query(page_title: str, query: str) -> bool:
+    """
+    Checks if all tokens from the query appear in the page title.
+    
+    Normalizes both strings to lowercase, removes punctuation, keeps only
+    letters, numbers, and spaces. Splits the query into tokens and verifies
+    that every token appears in the normalized page title.
+    
+    Args:
+        page_title (str): The page title to check against.
+        query (str): The search query to match.
+    
+    Returns:
+        bool: True if every token from the query appears in the page title, False otherwise.
+    """
+    # Normalize to lowercase and remove punctuation, keep only letters, numbers, and spaces
+    normalized_title = re.sub(r'[^\w\s]', '', page_title.lower())
+    normalized_query = re.sub(r'[^\w\s]', '', query.lower())
+    
+    # Split query into tokens (words/numbers) - first by whitespace, then split alphanumeric sequences
+    query_tokens = []
+    for word in normalized_query.split():
+        # Split alphanumeric sequences into separate letter and number groups
+        # e.g., "dolo650" becomes ["dolo", "650"]
+        tokens = re.findall(r'[a-z]+|\d+', word)
+        query_tokens.extend(tokens)
+    
+    # Check if every token appears in the normalized title
+    for token in query_tokens:
+        if token not in normalized_title:
+            return False
+    
+    return True

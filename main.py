@@ -15,8 +15,11 @@ def main():
             scraper_1mg.find_search_input(driver)
             print("searching dolo650")
             scraper_1mg.search_medicine(driver, "dolo650")
-            #time.sleep(10)
-            print(f"Title: {driver.current_url}")
+            result = scraper_1mg.open_first(driver, "dolo650")
+            print(f"Result URL: {result['url']}")
+            print(f"Result Title: {result['title']}")
+            if not scraper_1mg.title_matches_query(result['title'], "dolo650"):
+                print("Match not found")
             # print(f"PageSource:{driver.page_source}")
         finally:
             driver.quit()
