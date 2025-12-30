@@ -324,3 +324,118 @@ def title_matches_query(page_title: str, query: str) -> bool:
             return False
     
     return True
+
+
+def extract_medicine_summary(driver: webdriver.Chrome) -> Dict[str, Any]:
+    """
+    Extracts structured medicine information from the current page.
+    
+    Assumes the driver is already on the medicine details page (new tab).
+    Captures the page title, URL, and extracts structured sections by searching
+    for headings containing keywords like "Product introduction", "Uses", "Benefits",
+    "Side effects", "How to use", "Safety advice" (case insensitive).
+    
+    Args:
+        driver (webdriver.Chrome): The WebDriver instance on the medicine details page.
+    
+    Returns:
+        Dict[str, Any]: A dictionary containing 'title', 'url', and 'sections' keys.
+                       'sections' is a dict mapping section names to their content text.
+    
+    Raises:
+        TimeoutError: If required elements cannot be found within timeout period.
+    """
+    # Capture title and URL
+    title = driver.title
+    url = driver.current_url
+    
+    # Define section keywords to search for (case insensitive)
+    section_keywords = [
+        "product introduction",
+        "uses",
+        "benefits",
+        "side effects",
+        "how to use",
+        "safety advice"
+    ]
+    
+    sections = {}
+    
+    # Wait for page to load
+    wait_present(driver, By.TAG_NAME, "body")
+    
+    # Search for headings containing the keywords
+    for keyword in section_keywords:
+        # Try multiple strategies to find headings (case insensitive)
+        xpath_selectors = [
+            f"//h1[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{keyword}')]",
+            f"//h2[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{keyword}')]",
+            f"//h3[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{keyword}')]",
+            f"//h4[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{keyword}')]",
+            f"//h5[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{keyword}')]",
+            f"//h6[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{keyword}')]",
+            f"//div[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{keyword}') and (contains(@class, 'heading') or contains(@class, 'title') or contains(@class, 'header'))]",
+            f"//span[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{keyword}') and (contains(@class, 'heading') or contains(@class, 'title') or contains(@class, 'header'))]",
+        ]
+        
+        heading_element = None
+        
+        # Try each selector with explicit wait
+        for xpath in xpath_selectors:
+            try:
+                wait = WebDriverWait(driver, 5)
+                elements = wait.until(EC.presence_of_all_elements_located((By.XPATH, xpath)))
+                if elements:
+                    heading_element = elements[0]
+                    break
+            except (TimeoutException, Exception):
+                continue
+        
+        if heading_element:
+            # Extract text content following the heading
+            content_text = ""
+            try:
+                # Try to get content from parent element (excluding heading text)
+                parent = heading_element.find_element(By.XPATH, "./..")
+                parent_text = parent.text.strip()
+                heading_text = heading_element.text.strip()
+                
+                # Remove heading text from parent text
+                if heading_text in parent_text:
+                    content_text = parent_text.replace(heading_text, "", 1).strip()
+                else:
+                    content_text = parent_text
+                
+                # If content is too short, try next sibling
+                if not content_text or len(content_text) < 10:
+                    try:
+                        next_sibling = heading_element.find_element(By.XPATH, "./following-sibling::*[1]")
+                        content_text = next_sibling.text.strip()
+                    except Exception:
+                        pass
+                
+                # If still no content, try getting all text from parent's following siblings
+                if not content_text or len(content_text) < 10:
+                    try:
+                        siblings = parent.find_elements(By.XPATH, "./following-sibling::*")
+                        if siblings:
+                            content_text = " ".join([sib.text.strip() for sib in siblings[:2] if sib.text.strip()])
+                    except Exception:
+                        pass
+                
+                if content_text and len(content_text) > 5:
+                    sections[keyword] = content_text
+            except Exception:
+                # Fallback: use heading text itself if no content found
+                try:
+                    heading_text = heading_element.text.strip()
+                    if heading_text:
+                        sections[keyword] = heading_text
+                except Exception:
+                    pass
+    
+    return {
+        "title": title,
+        "url": url,
+        "sections": sections
+    }
