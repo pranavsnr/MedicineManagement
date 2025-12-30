@@ -1,4 +1,5 @@
 import scraper_1mg
+import time
 
 def main():
     print("Hello from medmgmnt!")
@@ -12,7 +13,10 @@ def main():
             scraper_1mg.open_homepage(driver)
             print("running find search input")
             scraper_1mg.find_search_input(driver)
-            print(f"Title: {driver.title}")
+            print("searching dolo650")
+            scraper_1mg.search_medicine(driver, "dolo650")
+            #time.sleep(10)
+            print(f"Title: {driver.current_url}")
             # print(f"PageSource:{driver.page_source}")
         finally:
             driver.quit()

@@ -4,7 +4,9 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webelement import WebElement
+from selenium.common.exceptions import TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
 from typing import Any
 from Selenium_utilis import wait_present, wait_visible
@@ -126,10 +128,62 @@ def find_search_input(driver: webdriver.Chrome) -> WebElement:
 
 def search_medicine(driver: webdriver.Chrome, query: str) -> None:
     """
-    Placeholder for future search implementation.
-
+    Searches for a medicine on the 1mg website using the provided query.
+    
+    This function locates the search input field, clears it, enters the search query,
+    submits the search by pressing Enter, and waits for the search results to load.
+    It waits for either the URL to change from the homepage or for a result container
+    element to appear on the page.
+    
     Args:
-        driver (webdriver.Chrome): The WebDriver instance.
-        query (str): Search query text.
+        driver (webdriver.Chrome): The WebDriver instance currently on the 1mg homepage.
+        query (str): The medicine name or search term to query (e.g., "dolo650").
+    
+    Returns:
+        None
+    
+    Raises:
+        TimeoutError: If search results do not load within the timeout period.
+        Exception: If the search input element cannot be found.
     """
-    pass
+    # Get the current URL to detect if it changes after search
+    homepage_url = driver.current_url
+    
+    # Find and interact with the search input element
+    search_input = find_search_input(driver)
+    search_input.click()
+    search_input.clear()
+    search_input.send_keys(query)
+    search_input.send_keys(Keys.RETURN)
+    
+    # Wait for search results to load - check if URL changed or result container appears
+    try:
+        # Try waiting for URL to change from homepage
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        
+        wait = WebDriverWait(driver, 10)
+        wait.until(lambda d: d.current_url != homepage_url)
+    except TimeoutException:
+        # If URL didn't change, wait for result container element to appear
+        result_selectors = [
+            (By.CSS_SELECTOR, "[class*='search-result']"),
+            (By.CSS_SELECTOR, "[class*='result-container']"),
+            (By.CSS_SELECTOR, "[class*='product-list']"),
+            (By.CSS_SELECTOR, "[class*='search-results']"),
+        ]
+        
+        result_found = False
+        for by, locator in result_selectors:
+            try:
+                wait_present(driver, by, locator)
+                result_found = True
+                break
+            except TimeoutError:
+                continue
+        
+        if not result_found:
+            raise TimeoutError(
+                f"Search results did not load after searching for '{query}'. "
+                "URL did not change and no result container elements were found."
+            )
