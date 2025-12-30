@@ -1,0 +1,1 @@
+This App, gets a medicine name from a user. Goes to 1mg, extract all the medical information and summarises them using AI in a way which is very understandable to older people. 
