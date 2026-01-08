@@ -24,6 +24,11 @@ def main():
             print(f"Extracted Summary - Title: {summary['title']}")
             print(f"Extracted Summary - URL: {summary['url']}")
             print(f"Extracted Sections: {list(summary['sections'].values())[0]}")
+            print(f"Product Introduction: ",summary['sections']['product introduction'])
+            print(f"Uses: ",summary['sections']['uses'])
+            print(f"Benefits: ",summary['sections']['benefits'])
+            print(f"here")
+        
             # print(f"PageSource:{driver.page_source}")
         finally:
             driver.quit()
